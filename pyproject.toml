@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flightbyte"
+version = "1.0.0"
+description = "Official Python client for the FlightByte flight status API: look flights up, watch them with signed webhooks and verify every delivery. No dependencies."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "FlightByte", email = "support@flightbyte.dev" }]
+keywords = [
+    "flightbyte",
+    "flight status",
+    "flight tracking",
+    "flights",
+    "aviation",
+    "airline",
+    "airport",
+    "gate",
+    "delay",
+    "webhooks",
+    "api client",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://flightbyte.dev"
+Documentation = "https://flightbyte.dev/docs"
+Source = "https://github.com/FlightByte-dev/flightbyte-python"
+Issues = "https://github.com/FlightByte-dev/flightbyte-python/issues"
+Changelog = "https://github.com/FlightByte-dev/flightbyte-python/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flightbyte"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/flightbyte",
+    "/tests",
+    "/spec",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+# The README's code is laid out by hand, aligned comments and all.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "W",
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade, held to Python 3.10 by target-version
+    "SIM",
+    "C4",
+    "PIE",
+    "RUF",
+    "S",   # bandit
+    "D",   # docstrings
+]
+ignore = [
+    "D105", # magic methods explain themselves
+    "D107", # __init__ is documented on the class
+    "D401", # "Looks a flight up." reads better than "Look a flight up."
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S"]
+"examples/**" = ["D", "S"]
+"scripts/**" = ["D", "S"]
+# Private modules document their public names; their helpers need no docstring.
+"src/flightbyte/_*.py" = ["D103"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+warn_unreachable = true
+files = ["src"]

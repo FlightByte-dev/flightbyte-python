@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # The development tools in requirements-dev.txt; the package itself has no
+  # dependencies.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: Dependencies
+    groups:
+      dev-dependencies:
+        patterns: ['*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: CI
+    groups:
+      actions:
+        patterns: ['*']

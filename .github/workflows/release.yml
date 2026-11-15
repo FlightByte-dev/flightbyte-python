@@ -1,0 +1,155 @@
+# Releases a version when a tag like v1.0.1 is pushed:
+#   1. checks that the tag, pyproject.toml and src/flightbyte/_version.py agree
+#      and that CHANGELOG.md has a section for the version, runs every check,
+#      and builds the sdist and wheel once;
+#   2. publishes those files to PyPI with trusted publishing, unless that
+#      version is already there, with attestations;
+#   3. creates the GitHub release from the version's CHANGELOG.md section,
+#      with the files attached.
+#
+# Run it by hand from the Actions tab to rehearse: it runs every check and
+# builds the files, but publishes and releases nothing.
+#
+# One-time setup on pypi.org, before the first release: Your account >
+# Publishing > Add a pending publisher (or, once the project exists, the
+# project's Settings > Publishing) for GitHub, owner FlightByte-dev,
+# repository flightbyte-python, workflow release.yml, environment pypi.
+# Then create the `pypi` environment in this repository's settings.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check versions, notes and code
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      published: ${{ steps.version.outputs.published }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - id: version
+        name: Compare versions
+        run: |
+          version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          name="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["name"])')"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in pyproject.toml."
+            exit 1
+          fi
+          if ! grep -qx "__version__ = \"$version\"" src/flightbyte/_version.py; then
+            echo "::error::src/flightbyte/_version.py does not say $version."
+            exit 1
+          fi
+          published=false
+          if curl -fsS -o /dev/null "https://pypi.org/pypi/$name/$version/json"; then published=true; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+          echo "Version $version, already on PyPI: $published"
+
+      - name: Release notes
+        run: |
+          {
+            echo "## Release notes for ${{ steps.version.outputs.version }}"
+            echo
+            tool/release_notes.sh "${{ steps.version.outputs.version }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e . -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy --strict src tests
+      - run: python -m unittest discover -s tests -t .
+
+      - name: Build
+        run: |
+          rm -rf dist
+          python -m build
+          twine check --strict dist/*
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: PyPI
+    needs: check
+    if: needs.check.outputs.published == 'false'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/flightbyte/${{ needs.check.outputs.version }}/
+    permissions:
+      contents: read
+      # Trusted publishing: PyPI exchanges this for a short-lived token.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Rehearse
+        if: github.event_name != 'push'
+        run: |
+          echo "Would publish to PyPI:"
+          ls -l dist
+      - name: Publish
+        if: github.event_name == 'push'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    name: GitHub release
+    needs: [check, publish]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      needs.check.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          tool/release_notes.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+          flags=()
+          [[ "$VERSION" == *[a-z]* ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag \
+            "${flags[@]}" \
+            dist/*
