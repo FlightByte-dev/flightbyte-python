@@ -2,5 +2,5 @@
 # Install with: pip install -e . -r requirements-dev.txt
 build==1.6.1
 mypy==2.4.1
-ruff==0.17.5
+ruff==0.17.6
 twine==7.0.0
